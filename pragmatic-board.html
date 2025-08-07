@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pragmatic Board - JavaScript Version</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f5f5f5;
+            padding: 20px;
+        }
+        
+        .board-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .board-title {
+            text-align: center;
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 30px;
+        }
+        
+        .board {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+        }
+        
+        .list-container {
+            background: #e4e6ea;
+            border-radius: 8px;
+            padding: 16px;
+            width: 280px;
+            min-height: 200px;
+        }
+        
+        .list-title {
+            font-weight: 600;
+            font-size: 16px;
+            color: #172b4d;
+            margin-bottom: 12px;
+            text-align: center;
+        }
+        
+        .list-content {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        
+        .card {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            padding: 12px;
+            cursor: grab;
+            position: relative;
+            transition: background-color 0.2s ease;
+        }
+        
+        .card:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .card.dragging {
+            opacity: 0.4;
+        }
+        
+        .card-content {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .drag-handle {
+            width: 16px;
+            height: 16px;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="12" r="1"/><circle cx="9" cy="5" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="19" r="1"/></svg>') no-repeat center;
+            background-size: contain;
+            opacity: 0.6;
+            flex-shrink: 0;
+        }
+        
+        .card-text {
+            flex: 1;
+            font-size: 14px;
+            color: #172b4d;
+            line-height: 1.4;
+        }
+        
+        .status-badge {
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            flex-shrink: 0;
+        }
+        
+        .status-todo {
+            background-color: #ddd6fe;
+            color: #7c3aed;
+        }
+        
+        .status-in-progress {
+            background-color: #fef3c7;
+            color: #d97706;
+        }
+        
+        .status-done {
+            background-color: #d1fae5;
+            color: #059669;
+        }
+        
+        /* Drop indicator styles */
+        .drop-indicator {
+            position: absolute;
+            background-color: #0052cc;
+            pointer-events: none;
+            z-index: 1000;
+        }
+        
+        .drop-indicator.horizontal {
+            height: 2px;
+            left: 4px;
+            right: 0;
+        }
+        
+        .drop-indicator.horizontal::before {
+            content: '';
+            position: absolute;
+            left: -4px;
+            top: -3px;
+            width: 8px;
+            height: 8px;
+            border: 2px solid #0052cc;
+            border-radius: 50%;
+            background-color: #0052cc;
+        }
+        
+        .drop-indicator.top {
+            top: -5px;
+        }
+        
+        .drop-indicator.bottom {
+            bottom: -5px;
+        }
+        
+        .list-drop-target {
+            background-color: rgba(0, 82, 204, 0.08);
+            transition: background-color 0.2s ease;
+        }
+        
+        /* Flash animation for successful drops */
+        @keyframes flashBlue {
+            0% { background-color: #e3f2fd; }
+            50% { background-color: #bbdefb; }
+            100% { background-color: white; }
+        }
+        
+        .flash-animation {
+            animation: flashBlue 0.7s ease-out;
+        }
+    </style>
+</head>
+<body>
+    <div class="board-container">
+        <h1 class="board-title">🚀 Pragmatic Board - JavaScript Version</h1>
+        <div class="board">
+            <div class="list-container" data-list-id="todo">
+                <h2 class="list-title">📝 To Do</h2>
+                <div class="list-content" id="todo-list">
+                    <!-- Cards will be added here -->
+                </div>
+            </div>
+            <div class="list-container" data-list-id="in-progress">
+                <h2 class="list-title">⚡ In Progress</h2>
+                <div class="list-content" id="in-progress-list">
+                    <!-- Cards will be added here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import Pragmatic Drag and Drop from CDN -->
+    <script type="module">
+        // Import the required modules from Pragmatic drag and drop
+        import {
+            draggable,
+            dropTargetForElements,
+            monitorForElements
+        } from 'https://esm.sh/@atlaskit/pragmatic-drag-and-drop@1.1.11/element/adapter';
+        
+        import {
+            extractClosestEdge,
+            attachClosestEdge
+        } from 'https://esm.sh/@atlaskit/pragmatic-drag-and-drop-hitbox@1.0.3/closest-edge';
+        
+        import {
+            triggerPostMoveFlash
+        } from 'https://esm.sh/@atlaskit/pragmatic-drag-and-drop-flourish@1.1.0/trigger-post-move-flash';
+
+        // Board data with two lists and cards
+        const boardData = {
+            'todo': [
+                { id: 'task-1', content: 'Plan new project roadmap', status: 'todo' },
+                { id: 'task-2', content: 'Review design mockups', status: 'todo' },
+                { id: 'task-3', content: 'Update documentation', status: 'todo' },
+                { id: 'task-4', content: 'Prepare client presentation', status: 'todo' }
+            ],
+            'in-progress': [
+                { id: 'task-5', content: 'Implement user authentication', status: 'in-progress' },
+                { id: 'task-6', content: 'Set up CI/CD pipeline', status: 'in-progress' },
+                { id: 'task-7', content: 'Optimize database queries', status: 'in-progress' }
+            ]
+        };
+
+        // Global state
+        let currentData = JSON.parse(JSON.stringify(boardData));
+
+        // Utility functions
+        function getCardData(cardId) {
+            return { cardId, type: 'card' };
+        }
+
+        function isCardData(data) {
+            return data && data.type === 'card' && typeof data.cardId === 'string';
+        }
+
+        function getListData(listId) {
+            return { listId, type: 'list' };
+        }
+
+        function isListData(data) {
+            return data && data.type === 'list' && typeof data.listId === 'string';
+        }
+
+        // Find card across all lists
+        function findCard(cardId) {
+            for (const [listId, cards] of Object.entries(currentData)) {
+                const index = cards.findIndex(card => card.id === cardId);
+                if (index !== -1) {
+                    return { listId, index, card: cards[index] };
+                }
+            }
+            return null;
+        }
+
+        // Move card between lists or within a list
+        function moveCard(sourceCardId, targetListId, targetIndex) {
+            const sourceLocation = findCard(sourceCardId);
+            if (!sourceLocation) return;
+
+            // Remove from source
+            const [movedCard] = currentData[sourceLocation.listId].splice(sourceLocation.index, 1);
+            
+            // Add to target
+            if (targetIndex === undefined) {
+                currentData[targetListId].push(movedCard);
+            } else {
+                currentData[targetListId].splice(targetIndex, 0, movedCard);
+            }
+
+            // Update card status
+            movedCard.status = targetListId;
+        }
+
+        // Create a card element
+        function createCardElement(card) {
+            const cardEl = document.createElement('div');
+            cardEl.className = 'card';
+            cardEl.dataset.cardId = card.id;
+            
+            cardEl.innerHTML = `
+                <div class="card-content">
+                    <div class="drag-handle"></div>
+                    <div class="card-text">${card.content}</div>
+                    <div class="status-badge status-${card.status}">${card.status.replace('-', ' ')}</div>
+                </div>
+            `;
+
+            return cardEl;
+        }
+
+        // Set up dragging for a card
+        function setupCardDragging(cardEl) {
+            const cardId = cardEl.dataset.cardId;
+            
+            // State management for the card
+            let isDragging = false;
+            let dropIndicator = null;
+
+            // Make card draggable
+            const dragCleanup = draggable({
+                element: cardEl,
+                getInitialData() {
+                    return getCardData(cardId);
+                },
+                onDragStart() {
+                    isDragging = true;
+                    cardEl.classList.add('dragging');
+                },
+                onDrop() {
+                    isDragging = false;
+                    cardEl.classList.remove('dragging');
+                    removeDropIndicator();
+                }
+            });
+
+            // Make card a drop target
+            const dropTargetCleanup = dropTargetForElements({
+                element: cardEl,
+                canDrop({ source }) {
+                    if (source.element === cardEl) return false;
+                    return isCardData(source.data);
+                },
+                getData({ input }) {
+                    const data = getCardData(cardId);
+                    return attachClosestEdge(data, {
+                        element: cardEl,
+                        input,
+                        allowedEdges: ['top', 'bottom']
+                    });
+                },
+                onDragEnter({ self }) {
+                    if (isDragging) return;
+                    const edge = extractClosestEdge(self.data);
+                    showDropIndicator(cardEl, edge);
+                },
+                onDrag({ self }) {
+                    if (isDragging) return;
+                    const edge = extractClosestEdge(self.data);
+                    showDropIndicator(cardEl, edge);
+                },
+                onDragLeave() {
+                    removeDropIndicator();
+                },
+                onDrop() {
+                    removeDropIndicator();
+                }
+            });
+
+            function showDropIndicator(targetEl, edge) {
+                removeDropIndicator();
+                if (!edge) return;
+
+                dropIndicator = document.createElement('div');
+                dropIndicator.className = `drop-indicator horizontal ${edge}`;
+                
+                const rect = targetEl.getBoundingClientRect();
+                const container = targetEl.parentElement;
+                const containerRect = container.getBoundingClientRect();
+                
+                dropIndicator.style.position = 'absolute';
+                dropIndicator.style.left = '8px';
+                dropIndicator.style.right = '8px';
+                
+                if (edge === 'top') {
+                    dropIndicator.style.top = `${rect.top - containerRect.top - 1}px`;
+                } else {
+                    dropIndicator.style.top = `${rect.bottom - containerRect.top - 1}px`;
+                }
+                
+                container.style.position = 'relative';
+                container.appendChild(dropIndicator);
+            }
+
+            function removeDropIndicator() {
+                if (dropIndicator) {
+                    dropIndicator.remove();
+                    dropIndicator = null;
+                }
+            }
+
+            return () => {
+                dragCleanup();
+                dropTargetCleanup();
+                removeDropIndicator();
+            };
+        }
+
+        // Set up drop target for a list
+        function setupListDropTarget(listEl) {
+            const listId = listEl.closest('.list-container').dataset.listId;
+            
+            return dropTargetForElements({
+                element: listEl,
+                canDrop({ source }) {
+                    return isCardData(source.data);
+                },
+                getData() {
+                    return getListData(listId);
+                },
+                onDragEnter() {
+                    listEl.parentElement.classList.add('list-drop-target');
+                },
+                onDragLeave() {
+                    listEl.parentElement.classList.remove('list-drop-target');
+                },
+                onDrop() {
+                    listEl.parentElement.classList.remove('list-drop-target');
+                }
+            });
+        }
+
+        // Render the board
+        function renderBoard() {
+            Object.keys(currentData).forEach(listId => {
+                const listEl = document.getElementById(`${listId}-list`);
+                listEl.innerHTML = '';
+                
+                currentData[listId].forEach(card => {
+                    const cardEl = createCardElement(card);
+                    listEl.appendChild(cardEl);
+                    setupCardDragging(cardEl);
+                });
+            });
+        }
+
+        // Set up global drag monitoring
+        function setupGlobalMonitoring() {
+            return monitorForElements({
+                canMonitor({ source }) {
+                    return isCardData(source.data);
+                },
+                onDrop({ location, source }) {
+                    const target = location.current.dropTargets[0];
+                    if (!target) return;
+
+                    const sourceData = source.data;
+                    if (!isCardData(sourceData)) return;
+
+                    const sourceCardId = sourceData.cardId;
+                    let targetListId, targetIndex;
+
+                    // Check if dropped on a card (for positioning)
+                    if (isCardData(target.data)) {
+                        const targetCard = findCard(target.data.cardId);
+                        if (!targetCard) return;
+                        
+                        targetListId = targetCard.listId;
+                        const edge = extractClosestEdge(target.data);
+                        
+                        if (edge === 'top') {
+                            targetIndex = targetCard.index;
+                        } else {
+                            targetIndex = targetCard.index + 1;
+                        }
+                    }
+                    // Check if dropped on a list
+                    else if (isListData(target.data)) {
+                        targetListId = target.data.listId;
+                        targetIndex = currentData[targetListId].length;
+                    }
+
+                    if (targetListId) {
+                        moveCard(sourceCardId, targetListId, targetIndex);
+                        renderBoard();
+                        
+                        // Flash animation
+                        setTimeout(() => {
+                            const movedCard = document.querySelector(`[data-card-id="${sourceCardId}"]`);
+                            if (movedCard) {
+                                triggerPostMoveFlash(movedCard).catch(() => {
+                                    // Fallback to CSS animation if the library flash fails
+                                    movedCard.classList.add('flash-animation');
+                                    setTimeout(() => movedCard.classList.remove('flash-animation'), 700);
+                                });
+                            }
+                        }, 0);
+                    }
+                }
+            });
+        }
+
+        // Initialize the application
+        function init() {
+            // Render initial board
+            renderBoard();
+            
+            // Set up list drop targets
+            document.querySelectorAll('.list-content').forEach(listEl => {
+                setupListDropTarget(listEl);
+            });
+            
+            // Set up global monitoring
+            setupGlobalMonitoring();
+            
+            console.log('🎉 Pragmatic Board initialized! Try dragging cards between lists.');
+        }
+
+        // Start the application
+        init();
+    </script>
+</body>
+</html>
